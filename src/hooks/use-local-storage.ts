@@ -34,7 +34,7 @@ function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => voi
         const item = window.localStorage.getItem(key);
         setStoredValue(item ? JSON.parse(item) : initialValue);
     }
-  }, [key, initialValue]);
+  }, [key]);
 
   return [storedValue, setValue];
 }
