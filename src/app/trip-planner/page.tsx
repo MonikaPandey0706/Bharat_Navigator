@@ -4,28 +4,40 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { format, differenceInCalendarDays } from 'date-fns';
+import { CalendarIcon, Utensils, Landmark, Bed, Sun, ShoppingBag, Plane, Activity, Hotel, Ticket } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
 import useLocalStorage from '@/hooks/use-local-storage';
-import { Utensils, Landmark, Bed, Sun, ShoppingBag, Plane, Activity } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { getTripPlan } from '@/lib/actions';
 import type { TripPlannerOutput } from '@/ai/flows/trip-planner-flow';
 
 const tripSchema = z.object({
   origin: z.string().min(2, 'Origin city is required.'),
   destination: z.string().min(2, 'Destination city is required.'),
-  days: z.coerce.number().min(1).max(30),
+  date: z.object(
+    {
+      from: z.date({ required_error: 'A start date is required.' }),
+      to: z.date({ required_error: 'An end date is required.' }),
+    },
+    { required_error: 'Please select a date range.' }
+  ),
   budget: z.enum(['Low', 'Mid-range', 'Luxury']),
   interests: z.string().min(3, 'At least one interest is required.'),
 });
 
-type SavedTrip = z.infer<typeof tripSchema> & { id: string; plan: TripPlannerOutput['plan'] };
-type PlannedTrip = z.infer<typeof tripSchema> & TripPlannerOutput;
+type TripFormValues = z.infer<typeof tripSchema>;
+type PlannedTrip = TripFormValues & TripPlannerOutput;
+type SavedTrip = PlannedTrip & { id: string };
 
 const activityIcons = {
   sightseeing: <Landmark className="h-4 w-4 text-primary" />,
@@ -41,22 +53,43 @@ export default function TripPlannerPage() {
   const { toast } = useToast();
   const [savedTrips, setSavedTrips] = useLocalStorage<SavedTrip[]>('savedTrips', []);
 
-  const form = useForm<z.infer<typeof tripSchema>>({
+  const form = useForm<TripFormValues>({
     resolver: zodResolver(tripSchema),
     defaultValues: {
       origin: 'Mumbai',
       destination: 'Jaipur',
-      days: 3,
+      date: {
+        from: new Date(),
+        to: new Date(new Date().setDate(new Date().getDate() + 7)),
+      },
       budget: 'Mid-range',
       interests: 'History, Food, Shopping',
     },
   });
 
-  async function onSubmit(values: z.infer<typeof tripSchema>) {
+  async function onSubmit(values: TripFormValues) {
     setIsLoading(true);
     setPlannedTrip(null);
+
+    const days = differenceInCalendarDays(values.date.to, values.date.from) + 1;
+    if (days <= 0) {
+        toast({
+            variant: 'destructive',
+            title: 'Invalid Date Range',
+            description: 'End date must be after the start date.',
+          });
+        setIsLoading(false);
+        return;
+    }
+
+    const input = {
+        ...values,
+        startDate: format(values.date.from, 'yyyy-MM-dd'),
+        days: days,
+    };
+
     try {
-      const result = await getTripPlan(values);
+      const result = await getTripPlan(input);
       setPlannedTrip({ ...values, ...result });
       toast({ title: 'Trip Plan Generated!', description: 'Your personalized itinerary is ready.' });
     } catch (error) {
@@ -73,13 +106,8 @@ export default function TripPlannerPage() {
   const saveTrip = () => {
     if (plannedTrip) {
       const newTrip: SavedTrip = { 
+        ...plannedTrip,
         id: new Date().toISOString(),
-        origin: plannedTrip.origin,
-        destination: plannedTrip.destination,
-        days: plannedTrip.days,
-        budget: plannedTrip.budget,
-        interests: plannedTrip.interests,
-        plan: plannedTrip.plan
       };
       setSavedTrips([...savedTrips, newTrip]);
       toast({ title: 'Trip Saved!', description: 'Your itinerary has been saved for later.' });
@@ -95,7 +123,7 @@ export default function TripPlannerPage() {
       <section className="text-center mb-12">
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary">Plan My Adventure</h1>
         <p className="mt-4 text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto">
-          Create a detailed, day-by-day travel itinerary. Let our intelligence handle the optimization, so you can focus on the experience.
+          Create a detailed, day-by-day travel itinerary with flight and hotel suggestions. Let our AI handle the optimization.
         </p>
       </section>
 
@@ -114,9 +142,51 @@ export default function TripPlannerPage() {
                    <FormField name="destination" control={form.control} render={({ field }) => (
                     <FormItem><FormLabel>Destination City</FormLabel><FormControl><Input placeholder="e.g., Jaipur" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField name="days" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Number of Days</FormLabel><FormControl><Input type="number" min="1" max="30" {...field} /></FormControl><FormMessage /></FormItem>
-                  )} />
+                   <FormField control={form.control} name="date" render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Travel Dates</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value.from && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value.from ? (
+                                  field.value.to ? (
+                                    <>
+                                      {format(field.value.from, "LLL dd, y")} -{" "}
+                                      {format(field.value.to, "LLL dd, y")}
+                                    </>
+                                  ) : (
+                                    format(field.value.from, "LLL dd, y")
+                                  )
+                                ) : (
+                                  <span>Pick a date range</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              initialFocus
+                              mode="range"
+                              defaultMonth={field.value.from}
+                              selected={{from: field.value.from, to: field.value.to}}
+                              onSelect={field.onChange}
+                              numberOfMonths={2}
+                              disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField control={form.control} name="budget" render={({ field }) => (
                     <FormItem><FormLabel>Budget</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Mid-range">Mid-range</SelectItem><SelectItem value="Luxury">Luxury</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
@@ -132,8 +202,8 @@ export default function TripPlannerPage() {
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
-          {isLoading && <div className="p-8 text-center">Generating your personalized itinerary...</div>}
+        <div className="lg:col-span-2 space-y-8">
+          {isLoading && <div className="p-8 text-center">Generating your personalized itinerary... This can take a moment.</div>}
           {!isLoading && !plannedTrip && (
              <Card className="h-full flex items-center justify-center">
                 <CardContent className="text-center text-muted-foreground p-8">
@@ -143,12 +213,37 @@ export default function TripPlannerPage() {
             </Card>
           )}
           {plannedTrip && plannedTrip.plan && (
+            <>
+            <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-bold font-headline">Your Itinerary: {plannedTrip.destination}</h2>
+                <Button variant="outline" onClick={saveTrip}>Save Trip</Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Ticket className="h-5 w-5 text-primary"/>Flight Suggestion</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="font-semibold">{plannedTrip.flightInfo.details}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Alternatives: {plannedTrip.flightInfo.alternatives}</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Hotel className="h-5 w-5 text-primary"/>Hotel Suggestion</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="font-semibold">{plannedTrip.hotelInfo.name}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{plannedTrip.hotelInfo.suggestionReason}</p>
+                    </CardContent>
+                </Card>
+            </div>
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Your Itinerary: {plannedTrip.destination}</CardTitle>
-                  <Button variant="outline" onClick={saveTrip}>Save Trip</Button>
-                </div>
+                <CardTitle>Daily Plan</CardTitle>
+                <CardDescription>
+                    {format(new Date(plannedTrip.date.from), "LLL dd, y")} - {format(new Date(plannedTrip.date.to), "LLL dd, y")}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Accordion type="single" collapsible defaultValue="item-0">
@@ -176,6 +271,7 @@ export default function TripPlannerPage() {
                 </Accordion>
               </CardContent>
             </Card>
+            </>
           )}
         </div>
       </div>

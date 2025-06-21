@@ -6,16 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Map, Plane, Trash2, Bus, TramFront, Car, Footprints, Clock, Wallet, MapPin } from 'lucide-react';
+import { Map, Plane, Trash2, Bus, TramFront, Car, Footprints, Clock, Wallet, MapPin, Ticket, Hotel } from 'lucide-react';
 import type { TripPlannerOutput } from '@/ai/flows/trip-planner-flow';
 import type { InCityNavigationOutput } from '@/ai/flows/in-city-navigation-flow';
+import { format } from 'date-fns';
 
 type SavedTrip = { 
   id: string; 
   destination: string; 
   origin: string; 
-  days: number; 
+  date: { from: string; to: string };
   plan: TripPlannerOutput['plan'];
+  flightInfo: TripPlannerOutput['flightInfo'];
+  hotelInfo: TripPlannerOutput['hotelInfo'];
 };
 
 type SavedRoute = { 
@@ -50,7 +53,11 @@ export default function SavedPage() {
   };
   
   if (!isClient) {
-    return null; // or a loading skeleton
+    return (
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <p>Loading saved plans...</p>
+        </div>
+    );
   }
 
   const RouteDetailView = ({ route, type }: { route: any, type: string }) => (
@@ -66,6 +73,14 @@ export default function SavedPage() {
         </ul>
     </div>
     );
+
+  const formatDate = (dateString: string) => {
+      try {
+        return format(new Date(dateString), "LLL dd, y");
+      } catch (e) {
+        return dateString;
+      }
+  }
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -95,7 +110,10 @@ export default function SavedPage() {
                      <div className="flex justify-between items-start">
                         <div>
                             <h3 className="font-bold">{trip.destination}</h3>
-                            <p className="text-sm text-muted-foreground">{trip.origin} → {trip.destination} ({trip.days} days)</p>
+                            <p className="text-sm text-muted-foreground">{trip.origin} → {trip.destination}</p>
+                            <p className="text-sm text-muted-foreground">
+                                {formatDate(trip.date.from)} - {formatDate(trip.date.to)}
+                            </p>
                         </div>
                         <Button variant="ghost" size="icon" onClick={() => deleteTrip(trip.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -103,16 +121,34 @@ export default function SavedPage() {
                      </div>
                      <Accordion type="single" collapsible className="w-full mt-2">
                         <AccordionItem value="item-1">
-                            <AccordionTrigger>View Itinerary</AccordionTrigger>
+                            <AccordionTrigger>View Full Plan</AccordionTrigger>
                             <AccordionContent>
-                                {trip.plan.map((day, index) => (
-                                    <div key={index} className="mb-4">
-                                        <h4 className="font-semibold">Day {day.day}: {day.title}</h4>
-                                        <ul className="list-disc pl-5 text-sm text-muted-foreground mt-2 space-y-1">
-                                            {day.activities.map((act, i) => <li key={i}><span className="font-medium">{act.time}:</span> {act.description}</li>)}
-                                        </ul>
+                                <div className="space-y-4">
+                                    {trip.flightInfo && (
+                                        <div>
+                                            <h4 className="font-semibold flex items-center gap-2"><Ticket className="h-4 w-4"/> Flight Details</h4>
+                                            <p className="text-sm text-muted-foreground pl-6">{trip.flightInfo.details}</p>
+                                            <p className="text-sm text-muted-foreground pl-6">Alternatives: {trip.flightInfo.alternatives}</p>
+                                        </div>
+                                    )}
+                                    {trip.hotelInfo && (
+                                         <div>
+                                            <h4 className="font-semibold flex items-center gap-2"><Hotel className="h-4 w-4"/> Hotel Details</h4>
+                                            <p className="text-sm text-muted-foreground pl-6">{trip.hotelInfo.name} - {trip.hotelInfo.suggestionReason}</p>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <h4 className="font-semibold">Daily Itinerary</h4>
+                                        {trip.plan.map((day, index) => (
+                                            <div key={index} className="mb-4 pl-6 pt-2">
+                                                <h5 className="font-semibold">Day {day.day}: {day.title}</h5>
+                                                <ul className="list-disc pl-5 text-sm text-muted-foreground mt-2 space-y-1">
+                                                    {day.activities.map((act, i) => <li key={i}><span className="font-medium">{act.time}:</span> {act.description}</li>)}
+                                                </ul>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
+                                </div>
                             </AccordionContent>
                         </AccordionItem>
                     </Accordion>
