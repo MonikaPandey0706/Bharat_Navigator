@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bus, TramFront, Car, Walk, Clock, Wallet } from 'lucide-react';
+import { Bus, TramFront, Car, Footprints, Clock, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import useLocalStorage from '@/hooks/use-local-storage';
 
@@ -58,7 +58,7 @@ export default function NavigationPage() {
     },
     walking: {
       name: 'Walking',
-      icon: <Walk className="h-5 w-5" />,
+      icon: <Footprints className="h-5 w-5" />,
       time: '1 hr 15 min',
       cost: 'Free',
       steps: ['Follow the walking path shown on the map.'],
