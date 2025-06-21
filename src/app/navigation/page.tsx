@@ -9,92 +9,85 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bus, TramFront, Car, Footprints, Clock, Wallet } from 'lucide-react';
+import { Bus, TramFront, Car, Footprints, Clock, Wallet, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import useLocalStorage from '@/hooks/use-local-storage';
+import { getRoutePlan } from '@/lib/actions';
+import type { InCityNavigationOutput } from '@/ai/flows/in-city-navigation-flow';
 
 const routeSchema = z.object({
+  city: z.string().min(2, 'City is required.'),
   start: z.string().min(3, 'Starting point is required.'),
   destination: z.string().min(3, 'Destination is required.'),
 });
 
-type RoutePlan = z.infer<typeof routeSchema> & { id: string, routes: any };
+type RouteFormValues = z.infer<typeof routeSchema>;
+type PlannedRoute = RouteFormValues & InCityNavigationOutput & { id: string };
+
+const transportIcons = {
+    public: <Bus className="h-5 w-5" />,
+    metro: <TramFront className="h-5 w-5" />,
+    rideShare: <Car className="h-5 w-5" />,
+    walking: <Footprints className="h-5 w-5" />,
+};
 
 export default function NavigationPage() {
-  const [routeOptions, setRouteOptions] = useState<any>(null);
+  const [routeOptions, setRouteOptions] = useState<RouteFormValues & InCityNavigationOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [savedRoutes, setSavedRoutes] = useLocalStorage<RoutePlan[]>('savedRoutes', []);
+  const [savedRoutes, setSavedRoutes] = useLocalStorage<PlannedRoute[]>('savedRoutes', []);
 
-  const form = useForm<z.infer<typeof routeSchema>>({
+  const form = useForm<RouteFormValues>({
     resolver: zodResolver(routeSchema),
     defaultValues: {
-      start: '',
-      destination: '',
+      city: 'Delhi',
+      start: 'Connaught Place',
+      destination: 'India Gate',
     },
   });
 
-  const generateMockRoutes = (values: z.infer<typeof routeSchema>) => ({
-    public: {
-      name: 'Public Transit',
-      icon: <Bus className="h-5 w-5" />,
-      time: '45 min',
-      cost: '₹25',
-      steps: ['Walk to Bus Stop A', 'Take Bus 123 (5 stops)', 'Get off at Stop B', 'Walk to destination'],
-    },
-    metro: {
-      name: 'Metro',
-      icon: <TramFront className="h-5 w-5" />,
-      time: '30 min',
-      cost: '₹40',
-      steps: ['Walk to Metro Station X', 'Take Blue Line towards Y (4 stations)', 'Change to Red Line at Z', 'Get off at Station W', 'Walk to destination'],
-    },
-    rideShare: {
-      name: 'Ride-sharing',
-      icon: <Car className="h-5 w-5" />,
-      time: '20 min',
-      cost: '₹150 - ₹200',
-      steps: ['Book a cab via app', 'Driver will follow the optimal route'],
-    },
-    walking: {
-      name: 'Walking',
-      icon: <Footprints className="h-5 w-5" />,
-      time: '1 hr 15 min',
-      cost: 'Free',
-      steps: ['Follow the walking path shown on the map.'],
-    },
-  });
-
-  function onSubmit(values: z.infer<typeof routeSchema>) {
+  async function onSubmit(values: RouteFormValues) {
     setIsLoading(true);
-    setTimeout(() => {
-      setRouteOptions({ ...values, routes: generateMockRoutes(values) });
-      setIsLoading(false);
-      toast({ title: 'Routes Found!', description: `Showing best options from ${values.start} to ${values.destination}.` });
-    }, 1000);
+    setRouteOptions(null);
+    try {
+        const result = await getRoutePlan(values);
+        setRouteOptions({ ...values, ...result });
+        toast({ title: 'Routes Found!', description: `Showing best options from ${values.start} to ${values.destination}.` });
+    } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'An error occurred',
+            description: error instanceof Error ? error.message : 'Failed to generate routes. Please try again.',
+        });
+    } finally {
+        setIsLoading(false);
+    }
   }
 
   const saveRoute = () => {
     if (routeOptions) {
-        const newRoute = { ...routeOptions, id: new Date().toISOString() };
+        const newRoute: PlannedRoute = { ...routeOptions, id: new Date().toISOString() };
         setSavedRoutes([...savedRoutes, newRoute]);
         toast({ title: 'Route Saved!', description: 'This route has been saved for later.' });
     }
   }
 
-  const RouteDetails = ({ route }: { route: any }) => (
+  const RouteDetails = ({ route, type }: { route: any, type: string }) => (
     <Card className="bg-background">
       <CardHeader>
         <div className="flex justify-between items-center">
             <CardTitle className="text-xl flex items-center gap-2">
-                {route.icon} {route.name}
+                {transportIcons[type as keyof typeof transportIcons]} {route.name}
             </CardTitle>
-            <span className="text-sm font-semibold rounded-full bg-primary/10 px-3 py-1 text-primary">Best Value</span>
+            {routeOptions?.bestOption === type && (
+                <span className="text-sm font-semibold rounded-full bg-primary/10 px-3 py-1 text-primary">Best Option</span>
+            )}
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex justify-around items-center mb-6 text-center border-b pb-4">
             <div><p className="font-bold text-lg flex items-center gap-1"><Clock className="h-4 w-4"/>{route.time}</p><p className="text-xs text-muted-foreground">Est. Time</p></div>
+            <div><p className="font-bold text-lg flex items-center gap-1"><MapPin className="h-4 w-4"/>{route.distance}</p><p className="text-xs text-muted-foreground">Distance</p></div>
             <div><p className="font-bold text-lg flex items-center gap-1"><Wallet className="h-4 w-4"/>{route.cost}</p><p className="text-xs text-muted-foreground">Est. Cost</p></div>
         </div>
         <ol className="relative border-l border-border space-y-4 pl-8">
@@ -127,6 +120,9 @@ export default function NavigationPage() {
             <CardContent>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <FormField name="city" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>City</FormLabel><FormControl><Input placeholder="e.g., Delhi" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
                   <FormField name="start" control={form.control} render={({ field }) => (
                     <FormItem><FormLabel>Starting Point</FormLabel><FormControl><Input placeholder="e.g., Connaught Place" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
@@ -151,8 +147,8 @@ export default function NavigationPage() {
                 </CardContent>
             </Card>
            )}
-           {isLoading && <p className="text-center p-8">Finding best routes...</p>}
-           {routeOptions && (
+           {isLoading && <div className="p-8 text-center">Finding best routes... This may take a moment.</div>}
+           {routeOptions && routeOptions.routes && (
              <div>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold font-headline">Routes for you</h2>
@@ -165,10 +161,10 @@ export default function NavigationPage() {
                         <TabsTrigger value="rideShare">Cab</TabsTrigger>
                         <TabsTrigger value="walking">Walk</TabsTrigger>
                     </TabsList>
-                    <TabsContent value="public"><RouteDetails route={routeOptions.routes.public} /></TabsContent>
-                    <TabsContent value="metro"><RouteDetails route={routeOptions.routes.metro} /></TabsContent>
-                    <TabsContent value="rideShare"><RouteDetails route={routeOptions.routes.rideShare} /></TabsContent>
-                    <TabsContent value="walking"><RouteDetails route={routeOptions.routes.walking} /></TabsContent>
+                    <TabsContent value="public"><RouteDetails route={routeOptions.routes.public} type="public" /></TabsContent>
+                    <TabsContent value="metro"><RouteDetails route={routeOptions.routes.metro} type="metro" /></TabsContent>
+                    <TabsContent value="rideShare"><RouteDetails route={routeOptions.routes.rideShare} type="rideShare"/></TabsContent>
+                    <TabsContent value="walking"><RouteDetails route={routeOptions.routes.walking} type="walking"/></TabsContent>
                 </Tabs>
              </div>
            )}

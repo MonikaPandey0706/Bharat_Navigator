@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Map, Plane, Trash2 } from 'lucide-react';
+import { Map, Plane, Trash2, Bus, TramFront, Car, Footprints, Clock, Wallet, MapPin } from 'lucide-react';
 import type { TripPlannerOutput } from '@/ai/flows/trip-planner-flow';
+import type { InCityNavigationOutput } from '@/ai/flows/in-city-navigation-flow';
 
 type SavedTrip = { 
   id: string; 
@@ -16,11 +17,24 @@ type SavedTrip = {
   days: number; 
   plan: TripPlannerOutput['plan'];
 };
-type RoutePlan = { id: string; start: string; destination: string; routes: any };
+
+type SavedRoute = { 
+  id: string; 
+  start: string; 
+  destination: string;
+  city: string;
+} & InCityNavigationOutput;
+
+const transportIcons = {
+    public: <Bus className="h-4 w-4" />,
+    metro: <TramFront className="h-4 w-4" />,
+    rideShare: <Car className="h-4 w-4" />,
+    walking: <Footprints className="h-4 w-4" />,
+};
 
 export default function SavedPage() {
   const [savedTrips, setSavedTrips] = useLocalStorage<SavedTrip[]>('savedTrips', []);
-  const [savedRoutes, setSavedRoutes] = useLocalStorage<RoutePlan[]>('savedRoutes', []);
+  const [savedRoutes, setSavedRoutes] = useLocalStorage<SavedRoute[]>('savedRoutes', []);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -38,6 +52,20 @@ export default function SavedPage() {
   if (!isClient) {
     return null; // or a loading skeleton
   }
+
+  const RouteDetailView = ({ route, type }: { route: any, type: string }) => (
+    <div className="mb-4">
+        <h4 className="font-semibold flex items-center gap-2">{transportIcons[type as keyof typeof transportIcons]} {route.name}</h4>
+        <div className="flex gap-4 text-sm text-muted-foreground mt-1">
+            <span><Clock className="h-3 w-3 inline mr-1" />{route.time}</span>
+            <span><MapPin className="h-3 w-3 inline mr-1" />{route.distance}</span>
+            <span><Wallet className="h-3 w-3 inline mr-1" />{route.cost}</span>
+        </div>
+        <ul className="list-disc pl-5 text-sm text-muted-foreground mt-2 space-y-1">
+            {route.steps.map((step: string, i: number) => <li key={i}>{step}</li>)}
+        </ul>
+    </div>
+    );
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -105,15 +133,26 @@ export default function SavedPage() {
               ) : (
                 savedRoutes.map((route) => (
                   <Card key={route.id} className="p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                          <h3 className="font-bold">{route.start} to {route.destination}</h3>
-                          <p className="text-sm text-muted-foreground">Multi-modal route options saved.</p>
-                      </div>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className="font-bold">{route.start} to {route.destination}</h3>
+                            <p className="text-sm text-muted-foreground">Route in {route.city}</p>
+                        </div>
                       <Button variant="ghost" size="icon" onClick={() => deleteRoute(route.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
+                    <Accordion type="single" collapsible className="w-full mt-2">
+                        <AccordionItem value="item-1">
+                            <AccordionTrigger>View Route Options</AccordionTrigger>
+                            <AccordionContent>
+                               {route.routes.public && <RouteDetailView route={route.routes.public} type="public" />}
+                               {route.routes.metro && <RouteDetailView route={route.routes.metro} type="metro" />}
+                               {route.routes.rideShare && <RouteDetailView route={route.routes.rideShare} type="rideShare" />}
+                               {route.routes.walking && <RouteDetailView route={route.routes.walking} type="walking" />}
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
                   </Card>
                 ))
               )}
