@@ -7,12 +7,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Map, Plane, Trash2 } from 'lucide-react';
+import type { TripPlannerOutput } from '@/ai/flows/trip-planner-flow';
 
-type TripPlan = { id: string; destination: string; origin: string; days: number; plan: any[] };
+type SavedTrip = { 
+  id: string; 
+  destination: string; 
+  origin: string; 
+  days: number; 
+  plan: TripPlannerOutput['plan'];
+};
 type RoutePlan = { id: string; start: string; destination: string; routes: any };
 
 export default function SavedPage() {
-  const [savedTrips, setSavedTrips] = useLocalStorage<TripPlan[]>('savedTrips', []);
+  const [savedTrips, setSavedTrips] = useLocalStorage<SavedTrip[]>('savedTrips', []);
   const [savedRoutes, setSavedRoutes] = useLocalStorage<RoutePlan[]>('savedRoutes', []);
   const [isClient, setIsClient] = useState(false);
 
@@ -70,11 +77,11 @@ export default function SavedPage() {
                         <AccordionItem value="item-1">
                             <AccordionTrigger>View Itinerary</AccordionTrigger>
                             <AccordionContent>
-                                {trip.plan.map((day: any, index: number) => (
-                                    <div key={index} className="mb-2">
-                                        <h4 className="font-semibold">Day {day.day}</h4>
-                                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                                            {day.activities.map((act: any, i: number) => <li key={i}>{act.desc}</li>)}
+                                {trip.plan.map((day, index) => (
+                                    <div key={index} className="mb-4">
+                                        <h4 className="font-semibold">Day {day.day}: {day.title}</h4>
+                                        <ul className="list-disc pl-5 text-sm text-muted-foreground mt-2 space-y-1">
+                                            {day.activities.map((act, i) => <li key={i}><span className="font-medium">{act.time}:</span> {act.description}</li>)}
                                         </ul>
                                     </div>
                                 ))}

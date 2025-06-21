@@ -12,7 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useToast } from '@/hooks/use-toast';
 import useLocalStorage from '@/hooks/use-local-storage';
-import { Utensils, Landmark, Bed, Sun } from 'lucide-react';
+import { Utensils, Landmark, Bed, Sun, ShoppingBag, Plane, Activity } from 'lucide-react';
+import { getTripPlan } from '@/lib/actions';
+import type { TripPlannerOutput } from '@/ai/flows/trip-planner-flow';
 
 const tripSchema = z.object({
   origin: z.string().min(2, 'Origin city is required.'),
@@ -22,56 +24,71 @@ const tripSchema = z.object({
   interests: z.string().min(3, 'At least one interest is required.'),
 });
 
-type TripPlan = z.infer<typeof tripSchema> & { id: string, plan: any[] };
+type SavedTrip = z.infer<typeof tripSchema> & { id: string; plan: TripPlannerOutput['plan'] };
+type PlannedTrip = z.infer<typeof tripSchema> & TripPlannerOutput;
+
+const activityIcons = {
+  sightseeing: <Landmark className="h-4 w-4 text-primary" />,
+  food: <Utensils className="h-4 w-4 text-primary" />,
+  activity: <Activity className="h-4 w-4 text-primary" />,
+  accommodation: <Bed className="h-4 w-4 text-primary" />,
+  travel: <Plane className="h-4 w-4 text-primary" />,
+};
 
 export default function TripPlannerPage() {
-  const [plannedTrip, setPlannedTrip] = useState<any>(null);
+  const [plannedTrip, setPlannedTrip] = useState<PlannedTrip | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [savedTrips, setSavedTrips] = useLocalStorage<TripPlan[]>('savedTrips', []);
+  const [savedTrips, setSavedTrips] = useLocalStorage<SavedTrip[]>('savedTrips', []);
 
   const form = useForm<z.infer<typeof tripSchema>>({
     resolver: zodResolver(tripSchema),
     defaultValues: {
-      origin: '',
-      destination: '',
+      origin: 'Mumbai',
+      destination: 'Jaipur',
       days: 3,
       budget: 'Mid-range',
-      interests: 'History, Food',
+      interests: 'History, Food, Shopping',
     },
   });
 
-  const generateMockPlan = (values: z.infer<typeof tripSchema>) => {
-    return Array.from({ length: values.days }).map((_, i) => ({
-      day: i + 1,
-      title: `Exploring ${values.destination}`,
-      activities: [
-        { time: '9:00 AM', desc: 'Visit a famous landmark', icon: <Landmark className="h-4 w-4 text-primary" /> },
-        { time: '1:00 PM', desc: 'Lunch at a local restaurant', icon: <Utensils className="h-4 w-4 text-primary" /> },
-        { time: '3:00 PM', desc: 'Afternoon sightseeing', icon: <Sun className="h-4 w-4 text-primary" /> },
-        { time: '8:00 PM', desc: 'Dinner and relax at hotel', icon: <Bed className="h-4 w-4 text-primary" /> },
-      ],
-    }));
-  };
-
-  function onSubmit(values: z.infer<typeof tripSchema>) {
+  async function onSubmit(values: z.infer<typeof tripSchema>) {
     setIsLoading(true);
-    // Simulate AI processing
-    setTimeout(() => {
-      const plan = generateMockPlan(values);
-      setPlannedTrip({ ...values, plan });
-      setIsLoading(false);
+    setPlannedTrip(null);
+    try {
+      const result = await getTripPlan(values);
+      setPlannedTrip({ ...values, ...result });
       toast({ title: 'Trip Plan Generated!', description: 'Your personalized itinerary is ready.' });
-    }, 1500);
+    } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'An error occurred',
+            description: error instanceof Error ? error.message : 'Failed to generate trip plan. Please try again.',
+          });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const saveTrip = () => {
     if (plannedTrip) {
-      const newTrip = { ...plannedTrip, id: new Date().toISOString() };
+      const newTrip: SavedTrip = { 
+        id: new Date().toISOString(),
+        origin: plannedTrip.origin,
+        destination: plannedTrip.destination,
+        days: plannedTrip.days,
+        budget: plannedTrip.budget,
+        interests: plannedTrip.interests,
+        plan: plannedTrip.plan
+      };
       setSavedTrips([...savedTrips, newTrip]);
       toast({ title: 'Trip Saved!', description: 'Your itinerary has been saved for later.' });
     }
   };
+
+  const getActivityIcon = (type: string) => {
+    return activityIcons[type as keyof typeof activityIcons] || <Sun className="h-4 w-4 text-primary" />;
+  }
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -98,13 +115,13 @@ export default function TripPlannerPage() {
                     <FormItem><FormLabel>Destination City</FormLabel><FormControl><Input placeholder="e.g., Jaipur" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField name="days" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Number of Days</FormLabel><FormControl><Input type="number" min="1" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Number of Days</FormLabel><FormControl><Input type="number" min="1" max="30" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="budget" render={({ field }) => (
                     <FormItem><FormLabel>Budget</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Mid-range">Mid-range</SelectItem><SelectItem value="Luxury">Luxury</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                   )} />
                   <FormField name="interests" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Interests</FormLabel><FormControl><Input placeholder="e.g., History, Food" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Interests</FormLabel><FormControl><Input placeholder="e.g., History, Food, Shopping" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={isLoading}>
                     {isLoading ? 'Generating Plan...' : 'Generate Trip Plan'}
@@ -125,7 +142,7 @@ export default function TripPlannerPage() {
                 </CardContent>
             </Card>
           )}
-          {plannedTrip && (
+          {plannedTrip && plannedTrip.plan && (
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
@@ -135,19 +152,19 @@ export default function TripPlannerPage() {
               </CardHeader>
               <CardContent>
                 <Accordion type="single" collapsible defaultValue="item-0">
-                  {plannedTrip.plan.map((day: any, index: number) => (
+                  {plannedTrip.plan.map((day, index) => (
                     <AccordionItem value={`item-${index}`} key={index}>
                       <AccordionTrigger className="text-lg font-semibold">Day {day.day}: {day.title}</AccordionTrigger>
                       <AccordionContent>
                         <ul className="space-y-4 pl-4 border-l">
-                          {day.activities.map((activity: any, actIndex: number) => (
+                          {day.activities.map((activity, actIndex) => (
                              <li key={actIndex} className="relative pl-6">
                                <span className="absolute left-[-10px] top-1 h-5 w-5 bg-background border-2 border-primary rounded-full"></span>
                                <div className="flex items-start gap-3">
-                                 <div className="mt-1">{activity.icon}</div>
+                                 <div className="mt-1">{getActivityIcon(activity.activityType)}</div>
                                  <div>
                                    <p className="font-semibold">{activity.time}</p>
-                                   <p className="text-muted-foreground">{activity.desc}</p>
+                                   <p className="text-muted-foreground">{activity.description}</p>
                                  </div>
                                </div>
                              </li>
