@@ -141,8 +141,9 @@ Your task is to:
     - The first day should include traveling to the airport, the flight itself, and checking into the suggested hotel.
     - For each day, provide a title and a list of activities.
     - Group attractions that are geographically close to each other to minimize travel time.
+    - **Be realistic about pacing.** A busy day should have no more than 3-4 main sights. Account for travel time.
+    - **Include travel details between locations.** After each sightseeing or specific activity, add an activity with \`activityType: 'travel'\`. The description for this travel activity should include the mode of transport (e.g., auto-rickshaw, cab), estimated travel time, and approximate distance to the next location. For example: "Take a 15-minute auto-rickshaw ride (approx. 3 km) to the next stop."
     - Suggest specific places (monuments, restaurants, markets, etc.).
-    - Be realistic about the number of activities per day.
     - For each activity, specify a time, a detailed description, and an appropriate activityType.
 
 Strictly structure the output as a JSON object that follows the provided schema.
